@@ -20,19 +20,10 @@ This mirrors the “paste in the Proxmox shell” flow used by [Proxmox VE Helpe
 
 ### Run on the Proxmox node (host shell, as `root`)
 
-Replace `YOURUSER/range_tracker` with `owner/repo` (the repo that hosts these scripts and releases):
+For this repo (`cogger12/range-tracker`) the one-liner is:
 
 ```bash
-export GITHUB_REPO=YOURUSER/range_tracker
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/deploy/pve-create-install.sh)"
-```
-
-If your default branch is not `main`:
-
-```bash
-export GITHUB_REPO=YOURUSER/range_tracker
-export BRANCH=master
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/${BRANCH}/deploy/pve-create-install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/cogger12/range-tracker/main/deploy/ct-range-tracker.sh)"
 ```
 
 Optional environment variables (all optional except `GITHUB_REPO` for this flow):
@@ -53,8 +44,7 @@ The script creates a **Debian 12** unprivileged CT, starts it, installs `curl`, 
 If you created the CT yourself:
 
 ```bash
-export GITHUB_REPO=YOURUSER/range_tracker
-curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/deploy/install-in-ct.sh" | bash
+curl -fsSL "https://raw.githubusercontent.com/cogger12/range-tracker/main/deploy/install-in-ct.sh" | bash
 ```
 
 Or set `RELEASE_TAG` / `TARBALL_URL` as documented in `install-in-ct.sh`.
