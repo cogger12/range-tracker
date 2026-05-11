@@ -16,5 +16,6 @@ fi
 RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${BRANCH}/deploy/pve-create-install.sh"
 echo "Fetching ${RAW_URL}..."
 
-curl -fsSL "${RAW_URL}" | bash
+GITHUB_REPO="${GITHUB_REPO}" BRANCH="${BRANCH}" curl -fsSL "${RAW_URL}" | \
+  GITHUB_REPO="${GITHUB_REPO}" BRANCH="${BRANCH}" bash
 
