@@ -63,14 +63,35 @@ fi
 
 OSTEMPLATE="${OSTEMPLATE:-}"
 if [[ -z "$OSTEMPLATE" ]]; then
-  tpl="$(pveam list local 2>/dev/null | awk '/debian-12-standard/ {print $1; exit}')"
-  if [[ -z "$tpl" ]]; then
-    echo "No local debian-12-standard template. On the host run:"
-    echo "  pveam update && pveam download local debian-12-standard_amd64.tar.zst"
-    echo "Then re-run, or set OSTEMPLATE=local:vztmpl/<exact-filename>"
+  mapfile -t templates < <(pveam list local 2>/dev/null | awk 'NR>1 {print $1}')
+  if [[ ${#templates[@]} -eq 0 ]]; then
+    echo "No templates found. Download one first:"
+    echo "  pveam update && pveam download local debian-12-standard_12.7-1_amd64.tar.zst"
+    echo "Or set OSTEMPLATE=local:vztmpl/<filename>"
     exit 1
   fi
-  OSTEMPLATE="local:vztmpl/${tpl}"
+
+  # Auto-select if there's only one
+  if [[ ${#templates[@]} -eq 1 ]]; then
+    OSTEMPLATE="local:vztmpl/${templates[0]}"
+    echo "Using template: ${OSTEMPLATE}"
+  else
+    echo ""
+    echo "Available templates:"
+    for i in "${!templates[@]}"; do
+      printf "  %d) %s\n" $((i + 1)) "${templates[$i]}"
+    done
+    echo ""
+    while true; do
+      read -rp "Pick a template [1-${#templates[@]}]: " choice
+      if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#templates[@]} )); then
+        OSTEMPLATE="local:vztmpl/${templates[$((choice - 1))]}"
+        break
+      fi
+      echo "Invalid choice."
+    done
+    echo "Using template: ${OSTEMPLATE}"
+  fi
 fi
 
 if pct status "$CTID" &>/dev/null; then
