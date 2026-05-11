@@ -73,7 +73,7 @@ if [[ -z "$OSTEMPLATE" ]]; then
 
   # Auto-select if there's only one
   if [[ ${#templates[@]} -eq 1 ]]; then
-    OSTEMPLATE="local:vztmpl/${templates[0]}"
+    OSTEMPLATE="${templates[0]}"
     echo "Using template: ${OSTEMPLATE}"
   else
     echo ""
@@ -85,7 +85,7 @@ if [[ -z "$OSTEMPLATE" ]]; then
     while true; do
       read -rp "Pick a template [1-${#templates[@]}]: " choice
       if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#templates[@]} )); then
-        OSTEMPLATE="local:vztmpl/${templates[$((choice - 1))]}"
+        OSTEMPLATE="${templates[$((choice - 1))]}"
         break
       fi
       echo "Invalid choice."
