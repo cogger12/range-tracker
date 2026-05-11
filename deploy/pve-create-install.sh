@@ -83,7 +83,7 @@ if [[ -z "$OSTEMPLATE" ]]; then
     done
     echo ""
     while true; do
-      read -rp "Pick a template [1-${#templates[@]}]: " choice
+      read -rp "Pick a template [1-${#templates[@]}]: " choice < /dev/tty
       if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#templates[@]} )); then
         OSTEMPLATE="${templates[$((choice - 1))]}"
         break
