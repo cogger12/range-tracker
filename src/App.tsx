@@ -214,6 +214,7 @@ function MainApp({
   const {
     data,
     loading,
+    error: dataError,
     addAmmoType,
     updateAmmoType,
     removeAmmoType,
@@ -317,7 +318,14 @@ function MainApp({
         </div>
       )}
 
-      {loading ? (
+      {dataError ? (
+        <div className="card">
+          <p className="error">Error loading data: {dataError}</p>
+          <button className="btn primary sm" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      ) : loading ? (
         <p className="muted">Loading your data...</p>
       ) : (
         <>

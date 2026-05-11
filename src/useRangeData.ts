@@ -5,10 +5,17 @@ import * as api from './api'
 export function useRangeData() {
   const [data, setData] = useState<AppData>({ ammoTypes: [], visits: [] })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    const [ammoTypes, visits] = await Promise.all([api.fetchAmmo(), api.fetchVisits()])
-    setData({ ammoTypes, visits })
+    try {
+      const [ammoTypes, visits] = await Promise.all([api.fetchAmmo(), api.fetchVisits()])
+      setData({ ammoTypes, visits })
+      setError(null)
+    } catch (err) {
+      console.error('Failed to load data:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load data')
+    }
   }, [])
 
   useEffect(() => {
@@ -60,6 +67,7 @@ export function useRangeData() {
   return {
     data,
     loading,
+    error,
     addAmmoType,
     updateAmmoType,
     removeAmmoType,
