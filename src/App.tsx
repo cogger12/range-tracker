@@ -14,13 +14,17 @@ type DraftLine = {
   costPerRound: string
 }
 
+function randomKey(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
 function money(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' })
 }
 
 function emptyDraftLine(): DraftLine {
   return {
-    key: crypto.randomUUID(),
+    key: randomKey(),
     ammoTypeId: '',
     customLabel: '',
     rounds: '',
@@ -30,7 +34,7 @@ function emptyDraftLine(): DraftLine {
 
 function visitToDrafts(visit: RangeVisit): DraftLine[] {
   return visit.lines.map((l) => ({
-    key: crypto.randomUUID(),
+    key: randomKey(),
     ammoTypeId: l.ammoTypeId ?? '',
     customLabel: l.ammoTypeId ? '' : l.label,
     rounds: String(l.rounds),
