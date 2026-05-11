@@ -21,3 +21,7 @@ export function loadData(): AppData {
 export function saveData(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
 }
+
+export function clearData(): void {
+  localStorage.removeItem(STORAGE_KEY)
+}

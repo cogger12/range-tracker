@@ -1,11 +1,9 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { AmmoType, RangeVisit, VisitLine } from './types'
-import {
-  lineCost,
-  useRangeData,
-  visitCost,
-  visitRounds,
-} from './useRangeData'
+import { lineCost, useRangeData, visitCost, visitRounds } from './useRangeData'
+import { useAuth } from './useAuth'
+import { loadData, clearData } from './storage'
+import { importData } from './api'
 import './App.css'
 
 type DraftLine = {
@@ -75,8 +73,147 @@ function draftsToLines(
 }
 
 export default function App() {
+  const auth = useAuth()
+
+  if (auth.loading) {
+    return (
+      <div className="app">
+        <header className="header">
+          <h1 className="title">Range log</h1>
+        </header>
+      </div>
+    )
+  }
+
+  if (!auth.user) {
+    return <AuthPage auth={auth} />
+  }
+
+  return <MainApp user={auth.user} onLogout={auth.logout} />
+}
+
+function AuthPage({ auth }: { auth: ReturnType<typeof useAuth> }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setSubmitting(true)
+    try {
+      if (mode === 'login') {
+        await auth.login(username, password)
+      } else {
+        await auth.register(username, password)
+      }
+    } catch {
+      // error is set in the auth hook
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="app">
+      <header className="header">
+        <h1 className="title">Range log</h1>
+        <p className="tagline">
+          Track your range visits, round counts, and ammo spend.
+        </p>
+      </header>
+
+      <div className="card auth-card">
+        <h2 className="card-title">
+          {mode === 'login' ? 'Sign in' : 'Create account'}
+        </h2>
+        {auth.error && <p className="error">{auth.error}</p>}
+        <form onSubmit={submit}>
+          <div className="auth-fields">
+            <label className="field">
+              <span>Username</span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value)
+                  auth.clearError()
+                }}
+                required
+                autoFocus
+                minLength={2}
+              />
+            </label>
+            <label className="field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  auth.clearError()
+                }}
+                required
+                minLength={6}
+              />
+            </label>
+          </div>
+          <div className="auth-actions">
+            <button type="submit" className="btn primary" disabled={submitting}>
+              {submitting
+                ? '...'
+                : mode === 'login'
+                  ? 'Sign in'
+                  : 'Create account'}
+            </button>
+          </div>
+        </form>
+        <p className="auth-switch muted small">
+          {mode === 'login' ? (
+            <>
+              Don&apos;t have an account?{' '}
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setMode('register')
+                  auth.clearError()
+                }}
+              >
+                Create one
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{' '}
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setMode('login')
+                  auth.clearError()
+                }}
+              >
+                Sign in
+              </button>
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function MainApp({
+  user,
+  onLogout,
+}: {
+  user: { id: number; username: string }
+  onLogout: () => void
+}) {
   const {
     data,
+    loading,
     addAmmoType,
     updateAmmoType,
     removeAmmoType,
@@ -86,6 +223,35 @@ export default function App() {
   } = useRangeData()
 
   const [section, setSection] = useState<'visits' | 'ammo'>('visits')
+  const [importPrompt, setImportPrompt] = useState(false)
+  const [importing, setImporting] = useState(false)
+
+  useEffect(() => {
+    const localData = loadData()
+    if (localData.ammoTypes.length > 0 || localData.visits.length > 0) {
+      setImportPrompt(true)
+    }
+  }, [])
+
+  async function handleImport() {
+    setImporting(true)
+    try {
+      const localData = loadData()
+      await importData(localData)
+      clearData()
+      setImportPrompt(false)
+      window.location.reload()
+    } catch {
+      alert('Import failed. Please try again.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function skipImport() {
+    clearData()
+    setImportPrompt(false)
+  }
 
   const ammoById = useMemo(
     () => new Map(data.ammoTypes.map((a) => [a.id, a])),
@@ -113,60 +279,100 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1 className="title">Range log</h1>
+        <div className="header-top">
+          <h1 className="title">Range log</h1>
+          <div className="user-info">
+            <span className="username">{user.username}</span>
+            <button type="button" className="btn sm ghost" onClick={onLogout}>
+              Sign out
+            </button>
+          </div>
+        </div>
         <p className="tagline">
-          Visits, round counts, and spend—saved in this browser.
+          Visits, round counts, and spend.
         </p>
       </header>
 
-      <section className="stats" aria-label="Summary">
-        <div className="stat">
-          <span className="stat-value">{totals.visits}</span>
-          <span className="stat-label">Range days</span>
+      {importPrompt && (
+        <div className="card import-card">
+          <p>
+            <strong>Existing data found</strong> in this browser&apos;s local
+            storage.
+          </p>
+          <p className="muted small">
+            Would you like to import it into your account?
+          </p>
+          <div className="import-actions">
+            <button
+              className="btn primary sm"
+              onClick={handleImport}
+              disabled={importing}
+            >
+              {importing ? 'Importing...' : 'Import data'}
+            </button>
+            <button className="btn ghost sm" onClick={skipImport}>
+              Skip
+            </button>
+          </div>
         </div>
-        <div className="stat">
-          <span className="stat-value">{totals.rounds.toLocaleString()}</span>
-          <span className="stat-label">Rounds fired</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value">{money(totals.cost)}</span>
-          <span className="stat-label">Total ammo cost</span>
-        </div>
-      </section>
+      )}
 
-      <nav className="tabs" aria-label="Sections">
-        <button
-          type="button"
-          className={section === 'visits' ? 'tab active' : 'tab'}
-          onClick={() => setSection('visits')}
-        >
-          Visits
-        </button>
-        <button
-          type="button"
-          className={section === 'ammo' ? 'tab active' : 'tab'}
-          onClick={() => setSection('ammo')}
-        >
-          Ammo &amp; pricing
-        </button>
-      </nav>
-
-      {section === 'visits' ? (
-        <VisitsSection
-          visits={sortedVisits}
-          ammoTypes={data.ammoTypes}
-          ammoById={ammoById}
-          onAdd={addVisit}
-          onUpdate={updateVisit}
-          onRemove={removeVisit}
-        />
+      {loading ? (
+        <p className="muted">Loading your data...</p>
       ) : (
-        <AmmoSection
-          ammoTypes={data.ammoTypes}
-          onAdd={addAmmoType}
-          onUpdate={updateAmmoType}
-          onRemove={removeAmmoType}
-        />
+        <>
+          <section className="stats" aria-label="Summary">
+            <div className="stat">
+              <span className="stat-value">{totals.visits}</span>
+              <span className="stat-label">Range days</span>
+            </div>
+            <div className="stat">
+              <span className="stat-value">
+                {totals.rounds.toLocaleString()}
+              </span>
+              <span className="stat-label">Rounds fired</span>
+            </div>
+            <div className="stat">
+              <span className="stat-value">{money(totals.cost)}</span>
+              <span className="stat-label">Total ammo cost</span>
+            </div>
+          </section>
+
+          <nav className="tabs" aria-label="Sections">
+            <button
+              type="button"
+              className={section === 'visits' ? 'tab active' : 'tab'}
+              onClick={() => setSection('visits')}
+            >
+              Visits
+            </button>
+            <button
+              type="button"
+              className={section === 'ammo' ? 'tab active' : 'tab'}
+              onClick={() => setSection('ammo')}
+            >
+              Ammo &amp; pricing
+            </button>
+          </nav>
+
+          {section === 'visits' ? (
+            <VisitsSection
+              visits={sortedVisits}
+              ammoTypes={data.ammoTypes}
+              ammoById={ammoById}
+              onAdd={addVisit}
+              onUpdate={updateVisit}
+              onRemove={removeVisit}
+            />
+          ) : (
+            <AmmoSection
+              ammoTypes={data.ammoTypes}
+              onAdd={addAmmoType}
+              onUpdate={updateAmmoType}
+              onRemove={removeAmmoType}
+            />
+          )}
+        </>
       )}
     </div>
   )
@@ -183,15 +389,16 @@ function VisitsSection({
   visits: RangeVisit[]
   ammoTypes: AmmoType[]
   ammoById: Map<string, AmmoType>
-  onAdd: (v: Omit<RangeVisit, 'id'>) => void
-  onUpdate: (id: string, v: Omit<RangeVisit, 'id'>) => void
-  onRemove: (id: string) => void
+  onAdd: (v: Omit<RangeVisit, 'id'>) => Promise<void>
+  onUpdate: (id: string, v: Omit<RangeVisit, 'id'>) => Promise<void>
+  onRemove: (id: string) => Promise<void>
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<DraftLine[]>([emptyDraftLine()])
   const [formError, setFormError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   function resetForm() {
     setEditingId(null)
@@ -205,27 +412,40 @@ function VisitsSection({
     setEditingId(v.id)
     setDate(v.date.slice(0, 10))
     setNotes(v.notes)
-    setLines(
-      v.lines.length ? visitToDrafts(v) : [emptyDraftLine()],
-    )
+    setLines(v.lines.length ? visitToDrafts(v) : [emptyDraftLine()])
     setFormError(null)
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault()
     const built = draftsToLines(lines, ammoById)
     if (!built || built.length === 0) {
-      setFormError('Add at least one line with caliber name, rounds (≥1), and cost per round.')
+      setFormError(
+        'Add at least one line with caliber name, rounds (\u22651), and cost per round.',
+      )
       return
     }
-    const payload = { date: `${date}T12:00:00`, notes: notes.trim(), lines: built }
-    if (editingId) onUpdate(editingId, payload)
-    else onAdd(payload)
-    resetForm()
+    const payload = {
+      date: `${date}T12:00:00`,
+      notes: notes.trim(),
+      lines: built,
+    }
+    setSaving(true)
+    try {
+      if (editingId) await onUpdate(editingId, payload)
+      else await onAdd(payload)
+      resetForm()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function updateLine(key: string, patch: Partial<DraftLine>) {
-    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
+    setLines((prev) =>
+      prev.map((l) => (l.key === key ? { ...l, ...patch } : l)),
+    )
   }
 
   function onPickAmmo(key: string, ammoTypeId: string) {
@@ -240,7 +460,9 @@ function VisitsSection({
   return (
     <div className="panel">
       <form className="card form-card" onSubmit={submit}>
-        <h2 className="card-title">{editingId ? 'Edit visit' : 'Log a range day'}</h2>
+        <h2 className="card-title">
+          {editingId ? 'Edit visit' : 'Log a range day'}
+        </h2>
         {formError && <p className="error">{formError}</p>}
         <div className="field-row">
           <label className="field">
@@ -258,7 +480,7 @@ function VisitsSection({
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Range name, drills, weather…"
+              placeholder="Range name, drills, weather\u2026"
             />
           </label>
         </div>
@@ -322,7 +544,9 @@ function VisitsSection({
                     min={1}
                     step={1}
                     value={line.rounds}
-                    onChange={(e) => updateLine(line.key, { rounds: e.target.value })}
+                    onChange={(e) =>
+                      updateLine(line.key, { rounds: e.target.value })
+                    }
                     required
                   />
                 </label>
@@ -345,10 +569,12 @@ function VisitsSection({
                     className="btn icon danger"
                     aria-label="Remove line"
                     onClick={() =>
-                      setLines((prev) => prev.filter((l) => l.key !== line.key))
+                      setLines((prev) =>
+                        prev.filter((l) => l.key !== line.key),
+                      )
                     }
                   >
-                    ×
+                    &times;
                   </button>
                 )}
               </div>
@@ -362,8 +588,12 @@ function VisitsSection({
               Cancel edit
             </button>
           )}
-          <button type="submit" className="btn primary">
-            {editingId ? 'Save changes' : 'Add visit'}
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving
+              ? 'Saving...'
+              : editingId
+                ? 'Save changes'
+                : 'Add visit'}
           </button>
         </div>
       </form>
@@ -371,7 +601,9 @@ function VisitsSection({
       <div className="card list-card">
         <h2 className="card-title">Past visits</h2>
         {visits.length === 0 ? (
-          <p className="muted">No visits yet—log your first range day above.</p>
+          <p className="muted">
+            No visits yet—log your first range day above.
+          </p>
         ) : (
           <ul className="visit-list">
             {visits.map((v) => (
@@ -408,8 +640,14 @@ function VisitsSection({
                   <button
                     type="button"
                     className="btn sm danger"
-                    onClick={() => {
-                      if (confirm('Delete this visit?')) onRemove(v.id)
+                    onClick={async () => {
+                      if (confirm('Delete this visit?')) {
+                        try {
+                          await onRemove(v.id)
+                        } catch {
+                          alert('Failed to delete visit.')
+                        }
+                      }
                     }}
                   >
                     Delete
@@ -431,9 +669,9 @@ function AmmoSection({
   onRemove,
 }: {
   ammoTypes: AmmoType[]
-  onAdd: (name: string, cost: number) => void
-  onUpdate: (id: string, name: string, cost: number) => void
-  onRemove: (id: string) => void
+  onAdd: (name: string, cost: number) => Promise<void>
+  onUpdate: (id: string, name: string, cost: number) => Promise<void>
+  onRemove: (id: string) => Promise<void>
 }) {
   const [name, setName] = useState('')
   const [cost, setCost] = useState('')
@@ -441,13 +679,17 @@ function AmmoSection({
   const [editName, setEditName] = useState('')
   const [editCost, setEditCost] = useState('')
 
-  function submitNew(e: FormEvent) {
+  async function submitNew(e: FormEvent) {
     e.preventDefault()
     const c = Number.parseFloat(cost)
     if (!name.trim() || !Number.isFinite(c) || c < 0) return
-    onAdd(name.trim(), c)
-    setName('')
-    setCost('')
+    try {
+      await onAdd(name.trim(), c)
+      setName('')
+      setCost('')
+    } catch {
+      alert('Failed to add ammo type.')
+    }
   }
 
   function startEdit(a: AmmoType) {
@@ -456,13 +698,17 @@ function AmmoSection({
     setEditCost(String(a.costPerRound))
   }
 
-  function saveEdit(e: FormEvent) {
+  async function saveEdit(e: FormEvent) {
     e.preventDefault()
     if (!editingId) return
     const c = Number.parseFloat(editCost)
     if (!editName.trim() || !Number.isFinite(c) || c < 0) return
-    onUpdate(editingId, editName.trim(), c)
-    setEditingId(null)
+    try {
+      await onUpdate(editingId, editName.trim(), c)
+      setEditingId(null)
+    } catch {
+      alert('Failed to update ammo type.')
+    }
   }
 
   return (
@@ -470,7 +716,8 @@ function AmmoSection({
       <form className="card form-card" onSubmit={submitNew}>
         <h2 className="card-title">Add ammo type</h2>
         <p className="muted small">
-          Default cost per round is copied into new visit lines. You can still change it on each visit.
+          Default cost per round is copied into new visit lines. You can still
+          change it on each visit.
         </p>
         <div className="field-row">
           <label className="field grow">
@@ -538,7 +785,10 @@ function AmmoSection({
                   <>
                     <div>
                       <strong>{a.name}</strong>
-                      <span className="muted"> {money(a.costPerRound)} per round</span>
+                      <span className="muted">
+                        {' '}
+                        {money(a.costPerRound)} per round
+                      </span>
                     </div>
                     <div className="row-actions">
                       <button
@@ -551,8 +801,14 @@ function AmmoSection({
                       <button
                         type="button"
                         className="btn sm danger"
-                        onClick={() => {
-                          if (confirm(`Remove “${a.name}” from catalog?`)) onRemove(a.id)
+                        onClick={async () => {
+                          if (confirm(`Remove "${a.name}" from catalog?`)) {
+                            try {
+                              await onRemove(a.id)
+                            } catch {
+                              alert('Failed to delete ammo type.')
+                            }
+                          }
                         }}
                       >
                         Delete

@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+data
 
 # Local LXC release tarball staging
 deploy/lxc-bundle

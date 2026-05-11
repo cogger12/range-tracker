@@ -19,6 +19,8 @@ rm -rf "${BUNDLE_DIR}"
 mkdir -p "${STAGE}/range-tracker/deploy"
 
 cp -a "${ROOT}/dist" "${STAGE}/range-tracker/"
+cp -a "${ROOT}/server" "${STAGE}/range-tracker/"
+cp "${ROOT}/package.json" "${ROOT}/package-lock.json" "${STAGE}/range-tracker/"
 cp -a "${ROOT}/deploy/lxc-setup.sh" "${ROOT}/deploy/nginx-range-tracker.conf" "${STAGE}/range-tracker/deploy/"
 chmod +x "${STAGE}/range-tracker/deploy/lxc-setup.sh"
 
