@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as api from './api'
 
-type User = { id: number; username: string }
+type User = api.MeUser
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
@@ -28,22 +28,10 @@ export function useAuth() {
     }
   }, [])
 
-  const register = useCallback(async (username: string, password: string) => {
-    setError(null)
-    try {
-      const u = await api.register(username, password)
-      setUser(u)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Registration failed'
-      setError(msg)
-      throw err
-    }
-  }, [])
-
   const doLogout = useCallback(async () => {
     await api.logout()
     setUser(null)
   }, [])
 
-  return { user, loading, error, login, register, logout: doLogout, clearError: () => setError(null) }
+  return { user, loading, error, login, logout: doLogout, clearError: () => setError(null) }
 }

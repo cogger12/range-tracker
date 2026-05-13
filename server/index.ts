@@ -4,9 +4,10 @@ import cookieParser from 'cookie-parser'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import authRouter, { requireAuth } from './auth'
+import authRouter, { requireAuth, requireAdmin } from './auth'
 import ammoRouter from './routes/ammo'
 import visitsRouter from './routes/visits'
+import adminRouter from './routes/admin'
 import db, { runTransaction } from './db'
 
 const app = express()
@@ -16,6 +17,8 @@ app.use(express.json())
 app.use(cookieParser())
 
 app.use(authRouter)
+
+app.use('/api/admin', requireAuth, requireAdmin, adminRouter)
 
 app.use('/api/ammo', requireAuth, ammoRouter)
 app.use('/api/visits', requireAuth, visitsRouter)

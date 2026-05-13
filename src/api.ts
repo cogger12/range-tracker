@@ -15,15 +15,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
-export async function login(username: string, password: string) {
-  return request<{ id: number; username: string }>('/api/login', {
-    method: 'POST',
-    body: JSON.stringify({ username, password }),
-  })
-}
+export type MeUser = { id: number; username: string; isAdmin: boolean }
 
-export async function register(username: string, password: string) {
-  return request<{ id: number; username: string }>('/api/register', {
+export async function login(username: string, password: string) {
+  return request<MeUser>('/api/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   })
@@ -34,7 +29,43 @@ export async function logout() {
 }
 
 export async function getMe() {
-  return request<{ id: number; username: string }>('/api/me')
+  return request<MeUser>('/api/me')
+}
+
+export type AdminUserRow = {
+  id: number
+  username: string
+  isAdmin: boolean
+  createdAt: string
+}
+
+export async function listAdminUsers(): Promise<AdminUserRow[]> {
+  return request('/api/admin/users')
+}
+
+export async function adminCreateUser(
+  username: string,
+  password: string,
+  isAdmin: boolean,
+): Promise<AdminUserRow> {
+  return request('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, isAdmin }),
+  })
+}
+
+export async function adminUpdateUser(
+  id: number,
+  patch: { password?: string; isAdmin?: boolean },
+): Promise<AdminUserRow> {
+  return request(`/api/admin/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function adminDeleteUser(id: number) {
+  return request(`/api/admin/users/${id}`, { method: 'DELETE' })
 }
 
 export async function fetchAmmo(): Promise<AmmoType[]> {

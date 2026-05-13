@@ -3,7 +3,14 @@ import type { AmmoType, RangeVisit, VisitLine } from './types'
 import { lineCost, useRangeData, visitCost, visitRounds } from './useRangeData'
 import { useAuth } from './useAuth'
 import { loadData, clearData } from './storage'
-import { importData } from './api'
+import {
+  adminCreateUser,
+  adminDeleteUser,
+  adminUpdateUser,
+  importData,
+  listAdminUsers,
+  type AdminUserRow,
+} from './api'
 import './App.css'
 
 type DraftLine = {
@@ -97,7 +104,6 @@ export default function App() {
 }
 
 function AuthPage({ auth }: { auth: ReturnType<typeof useAuth> }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -106,11 +112,7 @@ function AuthPage({ auth }: { auth: ReturnType<typeof useAuth> }) {
     e.preventDefault()
     setSubmitting(true)
     try {
-      if (mode === 'login') {
-        await auth.login(username, password)
-      } else {
-        await auth.register(username, password)
-      }
+      await auth.login(username, password)
     } catch {
       // error is set in the auth hook
     } finally {
@@ -128,9 +130,8 @@ function AuthPage({ auth }: { auth: ReturnType<typeof useAuth> }) {
       </header>
 
       <div className="card auth-card">
-        <h2 className="card-title">
-          {mode === 'login' ? 'Sign in' : 'Create account'}
-        </h2>
+        <h2 className="card-title">Sign in</h2>
+        <p className="muted small">Accounts are created by an administrator.</p>
         {auth.error && <p className="error">{auth.error}</p>}
         <form onSubmit={submit}>
           <div className="auth-fields">
@@ -164,45 +165,10 @@ function AuthPage({ auth }: { auth: ReturnType<typeof useAuth> }) {
           </div>
           <div className="auth-actions">
             <button type="submit" className="btn primary" disabled={submitting}>
-              {submitting
-                ? '...'
-                : mode === 'login'
-                  ? 'Sign in'
-                  : 'Create account'}
+              {submitting ? '...' : 'Sign in'}
             </button>
           </div>
         </form>
-        <p className="auth-switch muted small">
-          {mode === 'login' ? (
-            <>
-              Don&apos;t have an account?{' '}
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => {
-                  setMode('register')
-                  auth.clearError()
-                }}
-              >
-                Create one
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{' '}
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => {
-                  setMode('login')
-                  auth.clearError()
-                }}
-              >
-                Sign in
-              </button>
-            </>
-          )}
-        </p>
       </div>
     </div>
   )
@@ -212,7 +178,7 @@ function MainApp({
   user,
   onLogout,
 }: {
-  user: { id: number; username: string }
+  user: { id: number; username: string; isAdmin: boolean }
   onLogout: () => void
 }) {
   const {
@@ -227,7 +193,7 @@ function MainApp({
     removeVisit,
   } = useRangeData()
 
-  const [section, setSection] = useState<'visits' | 'ammo'>('visits')
+  const [section, setSection] = useState<'visits' | 'ammo' | 'admin'>('visits')
   const [importPrompt, setImportPrompt] = useState(false)
   const [importing, setImporting] = useState(false)
 
@@ -365,6 +331,15 @@ function MainApp({
             >
               Ammo &amp; pricing
             </button>
+            {user.isAdmin && (
+              <button
+                type="button"
+                className={section === 'admin' ? 'tab active' : 'tab'}
+                onClick={() => setSection('admin')}
+              >
+                Admin
+              </button>
+            )}
           </nav>
 
           {section === 'visits' ? (
@@ -376,16 +351,231 @@ function MainApp({
               onUpdate={updateVisit}
               onRemove={removeVisit}
             />
-          ) : (
+          ) : section === 'ammo' ? (
             <AmmoSection
               ammoTypes={data.ammoTypes}
               onAdd={addAmmoType}
               onUpdate={updateAmmoType}
               onRemove={removeAmmoType}
             />
+          ) : (
+            <AdminSection currentUserId={user.id} />
           )}
         </>
       )}
+    </div>
+  )
+}
+
+function AdminSection({ currentUserId }: { currentUserId: number }) {
+  const [users, setUsers] = useState<AdminUserRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [newUsername, setNewUsername] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newIsAdmin, setNewIsAdmin] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [pwUserId, setPwUserId] = useState<number | null>(null)
+  const [pwValue, setPwValue] = useState('')
+
+  async function refresh() {
+    try {
+      const list = await listAdminUsers()
+      setUsers(list)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load users')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
+
+  const adminCount = users.filter((u) => u.isAdmin).length
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault()
+    setCreating(true)
+    try {
+      await adminCreateUser(newUsername.trim(), newPassword, newIsAdmin)
+      setNewUsername('')
+      setNewPassword('')
+      setNewIsAdmin(false)
+      await refresh()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to create user')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function toggleAdmin(u: AdminUserRow) {
+    const next = !u.isAdmin
+    if (u.isAdmin && adminCount <= 1) {
+      alert('Cannot remove the last admin.')
+      return
+    }
+    try {
+      await adminUpdateUser(u.id, { isAdmin: next })
+      if (u.id === currentUserId && u.isAdmin && !next) {
+        window.location.reload()
+        return
+      }
+      await refresh()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
+
+  async function savePassword() {
+    if (pwUserId === null) return
+    try {
+      await adminUpdateUser(pwUserId, { password: pwValue })
+      setPwUserId(null)
+      setPwValue('')
+      await refresh()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
+
+  async function handleDelete(u: AdminUserRow) {
+    if (u.id === currentUserId) return
+    if (u.isAdmin && adminCount <= 1) {
+      alert('Cannot delete the last admin.')
+      return
+    }
+    if (!confirm(`Delete user "${u.username}" and all their range data?`)) return
+    try {
+      await adminDeleteUser(u.id)
+      await refresh()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Delete failed')
+    }
+  }
+
+  return (
+    <div className="panel">
+      <div className="card form-card">
+        <h2 className="card-title">Create user</h2>
+        <p className="muted small">New users can sign in with the password you set here.</p>
+        <form onSubmit={handleCreate}>
+          <div className="field-row">
+            <label className="field grow">
+              <span>Username</span>
+              <input
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                minLength={2}
+                required
+              />
+            </label>
+            <label className="field grow">
+              <span>Password</span>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                minLength={6}
+                required
+              />
+            </label>
+            <label className="field checkbox-field">
+              <span>Admin</span>
+              <input
+                type="checkbox"
+                checked={newIsAdmin}
+                onChange={(e) => setNewIsAdmin(e.target.checked)}
+              />
+            </label>
+            <button type="submit" className="btn primary align-end" disabled={creating}>
+              {creating ? '...' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="card list-card">
+        <h2 className="card-title">Users</h2>
+        {loading ? (
+          <p className="muted">Loading…</p>
+        ) : error ? (
+          <p className="error">{error}</p>
+        ) : users.length === 0 ? (
+          <p className="muted">No users.</p>
+        ) : (
+          <ul className="admin-user-list">
+            {users.map((u) => (
+              <li key={u.id} className="admin-user-row">
+                <div>
+                  <strong>{u.username}</strong>
+                  {u.isAdmin && <span className="pill accent admin-pill">Admin</span>}
+                  {u.id === currentUserId && (
+                    <span className="muted small"> (you)</span>
+                  )}
+                </div>
+                <div className="row-actions">
+                  {pwUserId === u.id ? (
+                    <>
+                      <input
+                        className="admin-pw-input"
+                        type="password"
+                        placeholder="New password"
+                        value={pwValue}
+                        onChange={(e) => setPwValue(e.target.value)}
+                        minLength={6}
+                      />
+                      <button type="button" className="btn sm primary" onClick={savePassword}>
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm ghost"
+                        onClick={() => {
+                          setPwUserId(null)
+                          setPwValue('')
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn sm ghost"
+                      onClick={() => {
+                        setPwUserId(u.id)
+                        setPwValue('')
+                      }}
+                    >
+                      Set password
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn sm ghost"
+                    disabled={u.isAdmin && adminCount <= 1}
+                    onClick={() => toggleAdmin(u)}
+                  >
+                    {u.isAdmin ? 'Remove admin' : 'Make admin'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn sm danger"
+                    disabled={u.id === currentUserId || (u.isAdmin && adminCount <= 1)}
+                    onClick={() => handleDelete(u)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }

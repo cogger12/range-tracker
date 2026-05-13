@@ -15,17 +15,37 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return
   }
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as unknown as { sub: number; username: string }
+    const payload = jwt.verify(token, JWT_SECRET) as unknown as {
+      sub: number
+      username: string
+      admin?: boolean
+    }
     req.userId = payload.sub
     req.username = payload.username
+    req.isAdmin = Boolean(payload.admin)
     next()
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' })
   }
 }
 
-function setTokenCookie(res: Response, userId: number, username: string): void {
-  const token = jwt.sign({ sub: userId, username }, JWT_SECRET, { expiresIn: '30d' })
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.userId) {
+    res.status(401).json({ error: 'Not authenticated' })
+    return
+  }
+  const row = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.userId) as
+    | { is_admin: number }
+    | undefined
+  if (!row || row.is_admin !== 1) {
+    res.status(403).json({ error: 'Admin access required' })
+    return
+  }
+  next()
+}
+
+function setTokenCookie(res: Response, userId: number, username: string, isAdmin: boolean): void {
+  const token = jwt.sign({ sub: userId, username, admin: isAdmin }, JWT_SECRET, { expiresIn: '30d' })
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
@@ -36,32 +56,6 @@ function setTokenCookie(res: Response, userId: number, username: string): void {
 
 const router = Router()
 
-router.post('/api/register', (req: Request, res: Response) => {
-  const { username, password } = req.body
-  if (!username || typeof username !== 'string' || username.trim().length < 2) {
-    res.status(400).json({ error: 'Username must be at least 2 characters' })
-    return
-  }
-  if (!password || typeof password !== 'string' || password.length < 6) {
-    res.status(400).json({ error: 'Password must be at least 6 characters' })
-    return
-  }
-
-  const trimmed = username.trim()
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(trimmed)
-  if (existing) {
-    res.status(409).json({ error: 'Username already taken' })
-    return
-  }
-
-  const hash = bcrypt.hashSync(password, 10)
-  const result = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(trimmed, hash)
-  const userId = Number(result.lastInsertRowid)
-
-  setTokenCookie(res, userId, trimmed)
-  res.json({ id: userId, username: trimmed })
-})
-
 router.post('/api/login', (req: Request, res: Response) => {
   const { username, password } = req.body
   if (!username || !password) {
@@ -69,8 +63,10 @@ router.post('/api/login', (req: Request, res: Response) => {
     return
   }
 
-  const row = db.prepare('SELECT id, username, password_hash FROM users WHERE username = ?').get(username.trim()) as
-    | { id: number; username: string; password_hash: string }
+  const row = db
+    .prepare('SELECT id, username, password_hash, is_admin FROM users WHERE username = ?')
+    .get(username.trim()) as
+    | { id: number; username: string; password_hash: string; is_admin: number }
     | undefined
 
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
@@ -78,8 +74,8 @@ router.post('/api/login', (req: Request, res: Response) => {
     return
   }
 
-  setTokenCookie(res, row.id, row.username)
-  res.json({ id: row.id, username: row.username })
+  setTokenCookie(res, row.id, row.username, row.is_admin === 1)
+  res.json({ id: row.id, username: row.username, isAdmin: row.is_admin === 1 })
 })
 
 router.post('/api/logout', (_req: Request, res: Response) => {
@@ -88,7 +84,14 @@ router.post('/api/logout', (_req: Request, res: Response) => {
 })
 
 router.get('/api/me', requireAuth, (req: Request, res: Response) => {
-  res.json({ id: req.userId, username: req.username })
+  const row = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.userId!) as
+    | { is_admin: number }
+    | undefined
+  res.json({
+    id: req.userId,
+    username: req.username,
+    isAdmin: row?.is_admin === 1,
+  })
 })
 
 export default router

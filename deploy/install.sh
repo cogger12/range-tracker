@@ -87,6 +87,7 @@ Environment=NODE_ENV=production
 Environment=PORT=3001
 Environment=DATA_DIR=${DATA_DIR}
 EnvironmentFile=-${DATA_DIR}/.env
+EnvironmentFile=-${DATA_DIR}/bootstrap.env
 ExecStartPre=/bin/bash -c 'echo "JWT_SECRET=\$(cat ${DATA_DIR}/.jwt-secret)" > ${DATA_DIR}/.env'
 
 [Install]
@@ -115,4 +116,10 @@ echo "  URL:  http://${IP}/"
 echo "  Data: ${DATA_DIR}/"
 echo ""
 echo "  To update later, re-run this script."
+echo ""
+echo "  First admin (fresh database only):"
+echo "    echo 'INITIAL_ADMIN_USERNAME=admin' > ${DATA_DIR}/bootstrap.env"
+echo "    echo 'INITIAL_ADMIN_PASSWORD=your-secure-password' >> ${DATA_DIR}/bootstrap.env"
+echo "    chmod 600 ${DATA_DIR}/bootstrap.env && systemctl restart range-tracker"
+echo "    Then remove or clear bootstrap.env and restart again."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
